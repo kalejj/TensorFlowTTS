@@ -83,16 +83,36 @@ class KSSProcessor(BaseProcessor):
 
         return sample
 
-    def text_to_sequence(self, text):
+    # def text_to_sequence(self, text):
 
+    #     sequence = []
+    #     # Check for curly braces and treat their contents as ARPAbet:
+    #     while len(text):
+    #         m = _curly_re.match(text)
+    #         if not m:
+    #             sequence += self._symbols_to_sequence(
+    #                 self._clean_text(text, [self.cleaner_names])
+    #             )
+    #             break
+    #         sequence += self._symbols_to_sequence(
+    #             self._clean_text(m.group(1), [self.cleaner_names])
+    #         )
+    #         sequence += self._arpabet_to_sequence(m.group(2))
+    #         text = m.group(3)
+
+    #     # add eos tokens
+    #     sequence += [self.eos_id]
+    #     return sequence
+
+    def text_to_sequence(self, text):
+    
         sequence = []
         # Check for curly braces and treat their contents as ARPAbet:
         while len(text):
             m = _curly_re.match(text)
             if not m:
-                sequence += self._symbols_to_sequence(
-                    self._clean_text(text, [self.cleaner_names])
-                )
+                preprocessed_text = self._clean_text(text, [self.cleaner_names])
+                sequence += self._symbols_to_sequence(preprocessed_text)
                 break
             sequence += self._symbols_to_sequence(
                 self._clean_text(m.group(1), [self.cleaner_names])
@@ -102,7 +122,7 @@ class KSSProcessor(BaseProcessor):
 
         # add eos tokens
         sequence += [self.eos_id]
-        return sequence
+        return sequence, preprocessed_text
 
     def _clean_text(self, text, cleaner_names):
         for name in cleaner_names:
