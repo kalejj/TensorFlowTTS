@@ -27,17 +27,17 @@ import urllib
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # sunhi
-sunhi_fastspeech2_config = AutoConfig.from_pretrained('examples/fastspeech2/conf/fastspeech2.kss.v1.yaml')
-sunhi_fastspeech2 = TFAutoModel.from_pretrained(
-    config=sunhi_fastspeech2_config,
-    pretrained_path="tacotron2-200k.h5",
+fastspeech2_config = AutoConfig.from_pretrained('examples/fastspeech2/conf/fastspeech2.kss.v1.yaml')
+fastspeech2 = TFAutoModel.from_pretrained(
+    config=fastspeech2_config,
+    pretrained_path="fastspeech2-200k.h5",
     name="fastspeech2"
     )
 
-sunhi_mb_melgan_config = AutoConfig.from_pretrained('examples/multiband_melgan/conf/multiband_melgan.v1.yaml')
-sunhi_mb_melgan = TFAutoModel.from_pretrained(
-    config=sunhi_mb_melgan_config,
-    pretrained_path="model_out/mb-melgan/checkpoints/generator-1300000.h5",
+mb_melgan_config = AutoConfig.from_pretrained('examples/multiband_melgan/conf/multiband_melgan.v1.yaml')
+mb_melgan = TFAutoModel.from_pretrained(
+    config=mb_melgan_config,
+    pretrained_path="MB-MelGAN-1300k.h5",
     name="mb_melgan"
     )
 
@@ -70,7 +70,7 @@ app = Flask(__name__)
 @app.route("/", methods = ['GET', 'POST'])
 def search():
     if request.method == 'GET':
-        return render_template('sunhi_search.html')
+        return render_template('test_page.html')
     elif request.method == 'POST':
         text = request.form['need_decoding_str']
         speed = request.form['spd']
@@ -82,35 +82,24 @@ def search():
         start = time.time()
         audio_path, prepro_text = predict(text, speed, pitch, speaker)
         _time = time.time() - start
-        if speaker == 'young':
-            speaker = 'seoyoung'
-        return render_template('sunhi_search.html', arg = audio_path, text = text, spd = replaced_speed, pitch = replaced_pitch, speaker = speaker, text_list = prepro_text, time = _time)
+        return render_template('test_page.html', arg = audio_path, text = text, spd = replaced_speed, pitch = replaced_pitch, speaker = speaker, text_list = prepro_text, time = _time)
 def predict(input_text, speed = 1.0, pitch = 1.0, speaker = 'sunhi'):
     start = time.time()
     # 입력 문장을 effect_tag, pause_tag, 문장([. ? !]) 단위로 split
-    origin = re.split("\. |\? |! |<[ktml|pause]+>[^<>]*</[ktml|pause]+>", input_text)
-    split = re.findall('\. |\? |! |<[ktml|pause]+>[^<>]*</[ktml|pause]+>', input_text)
+    origin = re.split("\. |\? |! |<[effect|pause]+>[^<>]*</[effect|pause]+>", input_text)
+    split = re.findall('\. |\? |! |<[effect|pause]+>[^<>]*</[effect|pause]+>', input_text)
     text_list = []
+    print(origin)
+    print(split)
     for i in range(len(split)):
-        text_list.append(origin[i].strip())
-        text_list.append(split[i].strip())
+        if (split[i] == '. ') or (split[i] == '? ') or (split[i] == '! '):
+            a = origin[i] + split[i]
+            text_list.append(a.strip())
+        else:
+            text_list.append(origin[i])
+            text_list.append(split[i])
     text_list.append(origin[-1])
-    try:
-        text_list.remove('')
-    except:
-        pass
-    try:
-        text_list.remove('.')
-    except:
-        pass
-    try:
-        text_list.remove('?')
-    except:
-        pass
-    try:
-        text_list.remove('!')
-    except:
-        pass
+    print('text:', text_list)
 
     # digit, email tag 한글로 변환
     for x in range(len(text_list)):
@@ -154,42 +143,18 @@ def predict(input_text, speed = 1.0, pitch = 1.0, speaker = 'sunhi'):
 
         # tag 없음
         else:
-            if speaker == 'sunhi':
-                if (text_list[i][-1] != '.') & (text_list[i][-1] != '?') & (text_list[i][-1] != '!'):
-                    text_list[i] = text_list[i] + '.'
-                input_ids, preprocessed_text = processor.text_to_sequence(text_list[i])
-                text_list[i] = ''.join(preprocessed_text)
-                mel_before, mel_outputs, duration_outputs, _, _ = sunhi_fastspeech2.inference(
-                    tf.expand_dims(tf.convert_to_tensor(input_ids, dtype=tf.int32), 0),
-                    speaker_ids=tf.convert_to_tensor([0], dtype=tf.int32),
-                    speed_ratios=tf.convert_to_tensor([float(speed)], dtype=tf.float32),
-                    f0_ratios=tf.convert_to_tensor([float(pitch)], dtype=tf.float32),
-                    energy_ratios=tf.convert_to_tensor([1.0], dtype=tf.float32),
-                    )
-                total_audio = sunhi_mb_melgan.inference(mel_outputs)[0, :, 0]
-            elif speaker == 'young':
-                if (text_list[i][-1] != '.') & (text_list[i][-1] != '?') & (text_list[i][-1] != '!'):
-                    text_list[i] = text_list[i] + '.'
-                input_ids, preprocessed_text = processor.text_to_sequence(text_list[i])
-                text_list[i] = ''.join(preprocessed_text)
-                mel_before, mel_outputs, duration_outputs, _, _ = young_fastspeech2.inference(
-                    tf.expand_dims(tf.convert_to_tensor(input_ids, dtype=tf.int32), 0),
-                    speaker_ids=tf.convert_to_tensor([0], dtype=tf.int32),
-                    speed_ratios=tf.convert_to_tensor([float(speed)], dtype=tf.float32),
-                    f0_ratios=tf.convert_to_tensor([float(pitch)], dtype=tf.float32),
-                    energy_ratios=tf.convert_to_tensor([1.0], dtype=tf.float32),
-                    )
-                total_audio = young_mb_melgan.inference(mel_outputs)[0, :, 0]
-            elif speaker == 'japanese':
-                input_ids = jp_processor.text_to_sequence(text_list[i], inference = True)
-                mel_before, mel_outputs, duration_outputs, _, _ = japan_fastspeech2.inference(
-                    tf.expand_dims(tf.convert_to_tensor(input_ids, dtype=tf.int32), 0),
-                    speaker_ids=tf.convert_to_tensor([0], dtype=tf.int32),
-                    speed_ratios=tf.convert_to_tensor([float(speed)], dtype=tf.float32),
-                    f0_ratios=tf.convert_to_tensor([float(pitch)], dtype=tf.float32),
-                    energy_ratios=tf.convert_to_tensor([1.0], dtype=tf.float32),
-                    )
-                total_audio = japan_mb_melgan.inference(mel_outputs)[0, :, 0]
+            if (text_list[i][-1] != '.') & (text_list[i][-1] != '?') & (text_list[i][-1] != '!'):
+                text_list[i] = text_list[i] + '.'
+            input_ids, preprocessed_text = processor.text_to_sequence(text_list[i])
+            text_list[i] = ''.join(preprocessed_text)
+            mel_before, mel_outputs, duration_outputs, _, _ = fastspeech2.inference(
+                tf.expand_dims(tf.convert_to_tensor(input_ids, dtype=tf.int32), 0),
+                speaker_ids=tf.convert_to_tensor([0], dtype=tf.int32),
+                speed_ratios=tf.convert_to_tensor([float(speed)], dtype=tf.float32),
+                f0_ratios=tf.convert_to_tensor([float(pitch)], dtype=tf.float32),
+                energy_ratios=tf.convert_to_tensor([1.0], dtype=tf.float32),
+                )
+            total_audio = mb_melgan.inference(mel_outputs)[0, :, 0]
             total_audios = np.append(total_audios, total_audio, axis = 0)
 
         total_audios = np.append(total_audios, np.array([0]*7000, dtype = 'float32'))
@@ -199,7 +164,7 @@ def predict(input_text, speed = 1.0, pitch = 1.0, speaker = 'sunhi'):
     cur_time = datetime.now()
     timestamp_str = cur_time.strftime("%Y%m%d_%H%M%S_%f")
     sample_rate = 22050
-    output_audio = os.path.join('static',timestamp_str + '_' + speaker + '.wav')
+    output_audio = os.path.join('static', timestamp_str + '.wav')
     wavf.write(output_audio, sample_rate, total_audios)
     _time = time.time()-start
 
